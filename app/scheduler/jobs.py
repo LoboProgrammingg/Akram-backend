@@ -27,7 +27,11 @@ async def periodic_alert_job():
 
     db = SessionLocal()
     try:
-        result = await send_daily_alerts(db)
+        from app.domain.models.product import Product
+        from app.infrastructure.repositories.product_repository import SQLAlchemyProductRepository
+        
+        repo = SQLAlchemyProductRepository(db, Product)
+        result = await send_daily_alerts(db, repo)
         logger.info(f"Periodic alert result: {result}")
     except Exception as e:
         logger.error(f"Periodic alert job failed: {e}")

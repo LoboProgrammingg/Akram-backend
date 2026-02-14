@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./data/uploads"
     EXPORT_DIR: str = "./data/exports"
 
+    # Environment
+    ENVIRONMENT: str = "development"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

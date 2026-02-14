@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Optional
 
-from sqlalchemy.orm import Session
+from app.domain.repositories.product_repository import ProductRepository
 from langchain_core.documents import Document
 
 from app.domain.models.product import Product
@@ -34,13 +34,9 @@ def product_to_text(product: Product) -> str:
     )
 
 
-def load_products_as_documents(db: Session, upload_id: Optional[int] = None) -> list[Document]:
-    """Load all products from DB and convert to LangChain documents."""
-    query = db.query(Product)
-    if upload_id:
-        query = query.filter(Product.upload_id == upload_id)
-
-    products = query.all()
+def load_products_as_documents(repo: ProductRepository, upload_id: Optional[int] = None) -> list[Document]:
+    """Load all products from Repo and convert to LangChain documents."""
+    products = repo.get_all_for_indexing(upload_id)
 
     documents = []
     for product in products:

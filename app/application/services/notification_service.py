@@ -9,6 +9,7 @@ Features:
 
 from datetime import datetime, date
 from typing import Optional
+import json
 
 import pytz
 from sqlalchemy import func
@@ -18,6 +19,7 @@ from app.config import get_settings
 from app.domain.models.notification_log import NotificationLog
 from app.domain.models.phone_number import PhoneNumber
 from app.domain.models.product import Product
+from app.domain.repositories.product_repository import ProductRepository
 from app.infrastructure.evolution_api import EvolutionAPIClient
 
 settings = get_settings()
@@ -88,21 +90,21 @@ def _was_notified_today(db: Session, phone: str) -> bool:
     return (count or 0) > 0
 
 
-import json
 
-async def send_daily_alerts(db: Session, force: bool = False):
+
+async def send_daily_alerts(db: Session, repo: ProductRepository, force: bool = False):
     """Send periodic alerts based on contact preferences to active phone numbers.
     
     Args:
+        db: Database session for logs and phone numbers.
+        repo: Product repository for fetching products.
         force: If True, skip duplicate check and send even if already sent today.
     """
-    from app.application.services.product_service import get_muito_critico_products, get_critico_products, get_atencao_products
-
     # 1. Fetch all product categories once
     products_map = {
-        "MUITO CRÍTICO": get_muito_critico_products(db),
-        "CRITICO": get_critico_products(db),
-        "ATENÇÃO": get_atencao_products(db),
+        "MUITO CRÍTICO": repo.get_muito_critico(),
+        "CRITICO": repo.get_critico(),
+        "ATENÇÃO": repo.get_atencao(),
     }
 
     # 2. Get all active phone numbers

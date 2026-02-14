@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Backgro
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.infrastructure.database import get_db
+from app.interfaces.deps import get_db
 from app.interfaces.api.deps import get_current_user
 from app.domain.models.user import User
 from app.domain.models.upload import Upload
@@ -22,13 +22,16 @@ def _index_rag_background(upload_id: int):
     """Background task to re-index RAG after upload."""
     from app.infrastructure.database import SessionLocal
     from app.rag.chain import index_products
+    from app.infrastructure.repositories.product_repository import SQLAlchemyProductRepository
+    from app.domain.models.product import Product
 
     db = SessionLocal()
     try:
-        index_products(db, upload_id=upload_id)
+        repo = SQLAlchemyProductRepository(db, Product)
+        index_products(repo, upload_id=upload_id)
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"RAG indexing failed: {e}")
+        import structlog
+        structlog.get_logger(__name__).error("RAG indexing failed", error=str(e))
     finally:
         db.close()
 

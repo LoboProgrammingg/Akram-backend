@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.infrastructure.database import get_db
+from app.interfaces.deps import get_db
 from app.interfaces.api.deps import get_current_user
 from app.domain.models.user import User
 from app.domain.schemas.notification import AIQueryRequest, AIQueryResponse

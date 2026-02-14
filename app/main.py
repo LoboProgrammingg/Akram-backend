@@ -1,6 +1,6 @@
 """FastAPI application — main entry point."""
 
-import logging
+import structlog
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,6 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.infrastructure.database import engine, Base
+from app.core.logging import configure_logging
+from app.core.middleware import setup_middleware
+from app.core.exceptions import global_exception_handler
 
 # Import all models so SQLAlchemy knows about them
 from app.domain.models.product import Product
@@ -28,19 +31,16 @@ from app.interfaces.webhooks.evolution import router as evolution_router
 
 settings = get_settings()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-)
-logger = logging.getLogger(__name__)
+# Configure logging immediately
+configure_logging()
+logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown events."""
     # Startup
-    logger.info("Starting Akram Monitoring System...")
+    logger.info("Starting Akram Monitoring System...", env=settings.ENVIRONMENT)
 
     # Create DB tables (dev only — use Alembic in production)
     Base.metadata.create_all(bind=engine)
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
         admin = get_user_by_email(db, "admin@akram.com")
         if not admin:
             create_user(db, name="Admin", email="admin@akram.com", password="admin123", role="admin")
-            logger.info("Default admin user created: admin@akram.com / admin123")
+            logger.info("Default admin user created", email="admin@akram.com")
     finally:
         db.close()
 
@@ -77,7 +77,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Setup Middleware (Correlation ID, Logging)
+setup_middleware(app)
+
+# Global Exception Handling
+app.add_exception_handler(Exception, global_exception_handler)
+
 # CORS
+# Note: Middleware order matters. Starlette executes in reverse order of addition.
+# CORS should be outer-most (added last? no, added first executes last on request, first on response).
+# Actually FastAPI/Starlette execute LIFO (Last Added = First Executed).
+# We want CORS to handle the request first thing essentially, or early.
+# setup_middleware adds RequestLogging (base) which wraps the app.
+# Let's keep CORS here as explicit middleware.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:3001", "*"],

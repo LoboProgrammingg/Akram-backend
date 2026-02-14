@@ -11,12 +11,12 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.rag.embeddings import get_embeddings, get_llm
 from app.rag.loader import load_products_as_documents
 from app.rag.prompts import SYSTEM_PROMPT_TEMPLATE, WHATSAPP_SYSTEM_PROMPT
+from app.domain.repositories.product_repository import ProductRepository
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -37,10 +37,10 @@ def get_vector_store():
     )
 
 
-def index_products(db: Session, upload_id: Optional[int] = None):
-    """Index products from DB into the vector store."""
+def index_products(repo: ProductRepository, upload_id: Optional[int] = None):
+    """Index products from Repo into the vector store."""
     logger.info("Starting product indexing...")
-    documents = load_products_as_documents(db, upload_id)
+    documents = load_products_as_documents(repo, upload_id)
 
     if not documents:
         logger.warning("No documents to index")

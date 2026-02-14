@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 
-from app.infrastructure.database import get_db
+from app.interfaces.deps import get_db
 from app.domain.models.phone_number import PhoneNumber
 from app.domain.models.notification_log import NotificationLog
 from app.rag.chain import query_rag

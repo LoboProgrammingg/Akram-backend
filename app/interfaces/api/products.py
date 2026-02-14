@@ -1,12 +1,12 @@
 """Products API routes — list, filter, stats, charts."""
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import date
 
-from app.infrastructure.database import get_db
 from app.interfaces.api.deps import get_current_user
+from app.interfaces.deps import get_product_repository
+from app.domain.repositories.product_repository import ProductRepository
 from app.domain.models.user import User
 from app.domain.schemas.product import ProductFilter, ProductRead, ProductStats
 from app.application.services.product_service import (
@@ -31,7 +31,7 @@ def list_products(
     validade_end: Optional[date] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
+    repo: ProductRepository = Depends(get_product_repository),
     user: User = Depends(get_current_user),
 ):
     filters = ProductFilter(
@@ -44,46 +44,46 @@ def list_products(
         page=page,
         page_size=page_size,
     )
-    result = get_products(db, filters)
+    result = get_products(repo, filters)
     result["items"] = [ProductRead.model_validate(p) for p in result["items"]]
     return result
 
 
 @router.get("/stats", response_model=ProductStats)
 def product_stats(
-    db: Session = Depends(get_db),
+    repo: ProductRepository = Depends(get_product_repository),
     user: User = Depends(get_current_user),
 ):
-    return get_product_stats(db)
+    return get_product_stats(repo)
 
 
 @router.get("/charts/by-classe")
 def charts_by_classe(
-    db: Session = Depends(get_db),
+    repo: ProductRepository = Depends(get_product_repository),
     user: User = Depends(get_current_user),
 ):
-    return get_chart_data_by_classe(db)
+    return get_chart_data_by_classe(repo)
 
 
 @router.get("/charts/by-filial")
 def charts_by_filial(
-    db: Session = Depends(get_db),
+    repo: ProductRepository = Depends(get_product_repository),
     user: User = Depends(get_current_user),
 ):
-    return get_chart_data_by_filial(db)
+    return get_chart_data_by_filial(repo)
 
 
 @router.get("/charts/expiry-timeline")
 def charts_expiry_timeline(
-    db: Session = Depends(get_db),
+    repo: ProductRepository = Depends(get_product_repository),
     user: User = Depends(get_current_user),
 ):
-    return get_chart_data_expiry_timeline(db)
+    return get_chart_data_expiry_timeline(repo)
 
 
 @router.get("/filters")
 def filter_options(
-    db: Session = Depends(get_db),
+    repo: ProductRepository = Depends(get_product_repository),
     user: User = Depends(get_current_user),
 ):
-    return get_filter_options(db)
+    return get_filter_options(repo)

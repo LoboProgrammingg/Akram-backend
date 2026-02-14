@@ -41,3 +41,7 @@ pytz==2025.2
 
 # CORS
 starlette==0.45.3
+
+# Logging & Observability
+structlog==24.4.0
+asgi-correlation-id==4.3.1

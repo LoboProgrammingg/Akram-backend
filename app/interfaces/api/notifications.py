@@ -9,8 +9,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.infrastructure.database import get_db
+from app.interfaces.deps import get_db, get_product_repository
 from app.interfaces.api.deps import get_current_user, require_admin
+
+from app.domain.repositories.product_repository import ProductRepository
 from app.domain.models.user import User
 from app.domain.models.notification_log import NotificationLog
 from app.domain.schemas.notification import NotificationLogRead
@@ -63,12 +65,13 @@ def list_notifications(
 async def trigger_notifications(
     force: bool = Query(False, description="Forçar envio mesmo se já enviado hoje"),
     db: Session = Depends(get_db),
+    repo: ProductRepository = Depends(get_product_repository),
     user: User = Depends(get_current_user), # Changed from require_admin to debug 403
 ):
     """Manually trigger daily alert notifications."""
     print(f"TRIGGER REQUEST BY: {user.email} (Role: {user.role})")
     try:
-        result = await send_daily_alerts(db, force=force)
+        result = await send_daily_alerts(db, repo, force=force)
         return {"message": "Notificações processadas", **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao enviar notificações: {str(e)}")
