@@ -33,6 +33,10 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
         )
         return latest[0] if latest else None
 
+    def get_current_date(self) -> date:
+        """Get current date in the configured timezone."""
+        return datetime.now(tz).date()
+
     def get_with_filters(self, filters: ProductFilter, upload_id: int | None = None) -> Dict[str, Any]:
         """Get products with filtering and pagination."""
         query = self.db.query(Product)
