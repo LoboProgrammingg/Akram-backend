@@ -35,6 +35,13 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    @property
+    def SQLALCHEMY_DATABASE_URI(self) -> str:
+        """Return the database URL, ensuring compatibility with SQLAlchemy."""
+        if self.DATABASE_URL and self.DATABASE_URL.startswith("postgres://"):
+            return self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
+        return self.DATABASE_URL
+
 
 @lru_cache
 def get_settings() -> Settings:
