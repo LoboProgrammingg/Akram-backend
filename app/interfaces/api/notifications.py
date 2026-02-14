@@ -149,3 +149,26 @@ async def evolution_qr(
     from app.infrastructure.evolution_api import EvolutionAPIClient
     client = EvolutionAPIClient()
     return await client.get_instance_connect()
+@router.get("/debug-errors")
+def debug_errors(
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user), 
+):
+    """Get recent failed notification logs for debugging."""
+    logs = (
+        db.query(NotificationLog)
+        .filter(NotificationLog.status == "failed")
+        .order_by(NotificationLog.sent_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": log.id,
+            "phone": log.phone,
+            "error": log.error,
+            "sent_at": log.sent_at,
+        }
+        for log in logs
+    ]
