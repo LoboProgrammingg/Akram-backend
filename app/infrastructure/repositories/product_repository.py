@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.domain.models.product import Product
+from app.domain.models.upload import Upload
 from app.domain.repositories.product_repository import ProductRepository
 from app.infrastructure.repositories.base_repository import SQLAlchemyRepository
 from app.domain.schemas.product import ProductFilter, ProductStats
@@ -22,13 +23,22 @@ tz = pytz.timezone(settings.TIMEZONE)
 class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductRepository):
     """Product repository implementation using SQLAlchemy."""
 
-    def get_current_date(self) -> date:
-        """Get current date in configured timezone."""
-        return datetime.now(tz).date()
+    def get_latest_upload_id(self) -> int | None:
+        """Get the ID of the most recent upload."""
+        latest = (
+            self.db.query(Upload.id)
+            .filter(Upload.status == "completed")
+            .order_by(Upload.created_at.desc())
+            .first()
+        )
+        return latest[0] if latest else None
 
-    def get_with_filters(self, filters: ProductFilter) -> Dict[str, Any]:
+    def get_with_filters(self, filters: ProductFilter, upload_id: int | None = None) -> Dict[str, Any]:
         """Get products with filtering and pagination."""
         query = self.db.query(Product)
+
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
 
         if filters.filial:
             query = query.filter(Product.filial == filters.filial)
@@ -60,27 +70,57 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
             "total_pages": (total + filters.page_size - 1) // filters.page_size,
         }
 
-    def get_stats(self) -> ProductStats:
+    def get_stats(self, upload_id: int | None = None) -> ProductStats:
         """Get dashboard statistics."""
-        total = self.db.query(func.count(Product.id)).scalar() or 0
-        muito_critico = self.db.query(func.count(Product.id)).filter(
+        base_query = self.db.query(func.count(Product.id))
+        if upload_id:
+            base_query = base_query.filter(Product.upload_id == upload_id)
+
+        total = base_query.scalar() or 0
+        
+        muito_critico_query = self.db.query(func.count(Product.id)).filter(
             func.upper(Product.classe).like("%MUITO CR%")
-        ).scalar() or 0
-        critico = self.db.query(func.count(Product.id)).filter(
+        )
+        if upload_id:
+            muito_critico_query = muito_critico_query.filter(Product.upload_id == upload_id)
+        muito_critico = muito_critico_query.scalar() or 0
+
+        critico_query = self.db.query(func.count(Product.id)).filter(
             func.upper(Product.classe).like("%CRITICO%"),
             ~func.upper(Product.classe).like("%MUITO%"),
-        ).scalar() or 0
-        vencido = self.db.query(func.count(Product.id)).filter(
+        )
+        if upload_id:
+            critico_query = critico_query.filter(Product.upload_id == upload_id)
+        critico = critico_query.scalar() or 0
+
+        vencido_query = self.db.query(func.count(Product.id)).filter(
             func.upper(Product.classe).like("%VENCIDO%")
-        ).scalar() or 0
+        )
+        if upload_id:
+            vencido_query = vencido_query.filter(Product.upload_id == upload_id)
+        vencido = vencido_query.scalar() or 0
 
-        total_custo = self.db.query(func.coalesce(func.sum(Product.custo_total), 0)).scalar()
-        total_custo_mc = self.db.query(func.coalesce(func.sum(Product.custo_total), 0)).filter(
+        total_custo_query = self.db.query(func.coalesce(func.sum(Product.custo_total), 0))
+        if upload_id:
+            total_custo_query = total_custo_query.filter(Product.upload_id == upload_id)
+        total_custo = total_custo_query.scalar()
+
+        total_custo_mc_query = self.db.query(func.coalesce(func.sum(Product.custo_total), 0)).filter(
             func.upper(Product.classe).like("%MUITO CR%")
-        ).scalar()
+        )
+        if upload_id:
+            total_custo_mc_query = total_custo_mc_query.filter(Product.upload_id == upload_id)
+        total_custo_mc = total_custo_mc_query.scalar()
 
-        filiais = [r[0] for r in self.db.query(Product.filial).distinct().filter(Product.filial.isnot(None)).all()]
-        classes = [r[0] for r in self.db.query(Product.classe).distinct().filter(Product.classe.isnot(None)).all()]
+        filiais_query = self.db.query(Product.filial).distinct().filter(Product.filial.isnot(None))
+        if upload_id:
+            filiais_query = filiais_query.filter(Product.upload_id == upload_id)
+        filiais = [r[0] for r in filiais_query.all()]
+
+        classes_query = self.db.query(Product.classe).distinct().filter(Product.classe.isnot(None))
+        if upload_id:
+            classes_query = classes_query.filter(Product.upload_id == upload_id)
+        classes = [r[0] for r in classes_query.all()]
 
         return ProductStats(
             total_products=total,
@@ -93,37 +133,31 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
             classes=sorted(classes),
         )
 
-    def get_muito_critico(self) -> List[Product]:
+    def get_muito_critico(self, upload_id: int | None = None) -> List[Product]:
         """Get all products with Classe == 'Muito Critico'."""
-        return (
-            self.db.query(Product)
-            .filter(func.upper(Product.classe).like("%MUITO CR%"))
-            .order_by(Product.validade.asc().nullslast())
-            .all()
-        )
+        query = self.db.query(Product).filter(func.upper(Product.classe).like("%MUITO CR%"))
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+        return query.order_by(Product.validade.asc().nullslast()).all()
 
-    def get_critico(self) -> List[Product]:
+    def get_critico(self, upload_id: int | None = None) -> List[Product]:
         """Get all products with Classe == 'Critico' (excluding Muito Critico)."""
-        return (
-            self.db.query(Product)
-            .filter(
-                func.upper(Product.classe).like("%CRITICO%"),
-                ~func.upper(Product.classe).like("%MUITO%")
-            )
-            .order_by(Product.validade.asc().nullslast())
-            .all()
+        query = self.db.query(Product).filter(
+            func.upper(Product.classe).like("%CRITICO%"),
+            ~func.upper(Product.classe).like("%MUITO%")
         )
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+        return query.order_by(Product.validade.asc().nullslast()).all()
 
-    def get_atencao(self) -> List[Product]:
+    def get_atencao(self, upload_id: int | None = None) -> List[Product]:
         """Get all products with Classe == 'Atencao' or 'Atenção'."""
-        return (
-            self.db.query(Product)
-            .filter(
-                (func.upper(Product.classe).like("%TEN%")) # Matches ATENCAO, ATENÇÃO
-            )
-            .order_by(Product.validade.asc().nullslast())
-            .all()
+        query = self.db.query(Product).filter(
+            (func.upper(Product.classe).like("%TEN%")) # Matches ATENCAO, ATENÇÃO
         )
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+        return query.order_by(Product.validade.asc().nullslast()).all()
 
     def get_all_for_indexing(self, upload_id: int | None = None) -> List[Product]:
         """Get all products for RAG indexing, optionally filtered by upload."""
@@ -132,57 +166,74 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
             query = query.filter(Product.upload_id == upload_id)
         return query.all()
 
-    def get_chart_data_by_classe(self) -> List[Dict[str, Any]]:
+    def get_chart_data_by_classe(self, upload_id: int | None = None) -> List[Dict[str, Any]]:
         """Get product count and total cost grouped by Classe."""
-        results = (
-            self.db.query(
-                Product.classe,
-                func.count(Product.id).label("count"),
-                func.coalesce(func.sum(Product.custo_total), 0).label("total_cost"),
-            )
-            .filter(Product.classe.isnot(None))
-            .group_by(Product.classe)
-            .all()
-        )
+        query = self.db.query(
+            Product.classe,
+            func.count(Product.id).label("count"),
+            func.coalesce(func.sum(Product.custo_total), 0).label("total_cost"),
+        ).filter(Product.classe.isnot(None))
+        
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+            
+        results = query.group_by(Product.classe).all()
         return [{"classe": r.classe, "count": r.count, "total_cost": float(r.total_cost)} for r in results]
 
-    def get_chart_data_by_filial(self) -> List[Dict[str, Any]]:
+    def get_chart_data_by_filial(self, upload_id: int | None = None) -> List[Dict[str, Any]]:
         """Get product count grouped by Filial."""
-        results = (
-            self.db.query(
-                Product.filial,
-                func.count(Product.id).label("count"),
-                func.coalesce(func.sum(Product.custo_total), 0).label("total_cost"),
-            )
-            .filter(Product.filial.isnot(None))
-            .group_by(Product.filial)
-            .all()
-        )
+        query = self.db.query(
+            Product.filial,
+            func.count(Product.id).label("count"),
+            func.coalesce(func.sum(Product.custo_total), 0).label("total_cost"),
+        ).filter(Product.filial.isnot(None))
+        
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+            
+        results = query.group_by(Product.filial).all()
         return [{"filial": r.filial, "count": r.count, "total_cost": float(r.total_cost)} for r in results]
 
-    def get_chart_data_expiry_timeline(self, days: int = 30) -> List[Dict[str, Any]]:
+    def get_chart_data_expiry_timeline(self, days: int = 30, upload_id: int | None = None) -> List[Dict[str, Any]]:
         """Get product count grouped by expiry date (next N days)."""
         today = self.get_current_date()
-        results = (
+        query = (
             self.db.query(
                 Product.validade,
                 func.count(Product.id).label("count"),
             )
             .filter(Product.validade.isnot(None))
             .filter(Product.validade >= today)
-            .group_by(Product.validade)
+        )
+        
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+            
+        results = (
+            query.group_by(Product.validade)
             .order_by(Product.validade)
             .limit(days)
             .all()
         )
         return [{"date": r.validade.isoformat(), "count": r.count} for r in results]
 
-    def get_filter_options(self) -> Dict[str, List[str]]:
+    def get_filter_options(self, upload_id: int | None = None) -> Dict[str, List[str]]:
         """Get all distinct values for filter dropdowns."""
-        filiais = [r[0] for r in self.db.query(Product.filial).distinct().filter(Product.filial.isnot(None)).all()]
-        classes = [r[0] for r in self.db.query(Product.classe).distinct().filter(Product.classe.isnot(None)).all()]
-        ufs = [r[0] for r in self.db.query(Product.uf).distinct().filter(Product.uf.isnot(None)).all()]
-        compradores = [r[0] for r in self.db.query(Product.comprador).distinct().filter(Product.comprador.isnot(None)).all()]
+        base_query_filial = self.db.query(Product.filial).distinct().filter(Product.filial.isnot(None))
+        base_query_classe = self.db.query(Product.classe).distinct().filter(Product.classe.isnot(None))
+        base_query_uf = self.db.query(Product.uf).distinct().filter(Product.uf.isnot(None))
+        base_query_comprador = self.db.query(Product.comprador).distinct().filter(Product.comprador.isnot(None))
+
+        if upload_id:
+            base_query_filial = base_query_filial.filter(Product.upload_id == upload_id)
+            base_query_classe = base_query_classe.filter(Product.upload_id == upload_id)
+            base_query_uf = base_query_uf.filter(Product.upload_id == upload_id)
+            base_query_comprador = base_query_comprador.filter(Product.upload_id == upload_id)
+
+        filiais = [r[0] for r in base_query_filial.all()]
+        classes = [r[0] for r in base_query_classe.all()]
+        ufs = [r[0] for r in base_query_uf.all()]
+        compradores = [r[0] for r in base_query_comprador.all()]
 
         return {
             "filiais": sorted(filiais),

@@ -101,10 +101,14 @@ async def send_daily_alerts(db: Session, repo: ProductRepository, force: bool = 
         force: If True, skip duplicate check and send even if already sent today.
     """
     # 1. Fetch all product categories once
+    upload_id = repo.get_latest_upload_id()
+    if not upload_id:
+        return {"sent": 0, "skipped": 0, "message": "Nenhum arquivo processado encontrado"}
+
     products_map = {
-        "MUITO CRÍTICO": repo.get_muito_critico(),
-        "CRITICO": repo.get_critico(),
-        "ATENÇÃO": repo.get_atencao(),
+        "MUITO CRÍTICO": repo.get_muito_critico(upload_id),
+        "CRITICO": repo.get_critico(upload_id),
+        "ATENÇÃO": repo.get_atencao(upload_id),
     }
 
     # 2. Get all active phone numbers
