@@ -1,0 +1,16 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.env
+.vscode
+.idea
+node_modules
+data/uploads/*
+data/exports/*
+data/chroma_db/*
+*.egg-info
+dist
+build
+.pytest_cache
+.mypy_cache

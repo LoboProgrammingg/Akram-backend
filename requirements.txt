@@ -1,0 +1,43 @@
+# Web Framework
+fastapi==0.115.13
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20
+
+# Database
+sqlalchemy==2.0.41
+psycopg2-binary==2.9.10
+alembic==1.17.2
+
+# Auth
+python-jose[cryptography]==3.4.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.3.0
+
+# Data Processing
+pandas==2.3.2
+openpyxl==3.1.5
+
+# AI / RAG - Unpinned to allow dependency resolution
+langchain
+langchain-community
+langchain-openai
+langchain-google-genai
+langchain-text-splitters
+langchain-chroma
+chromadb
+
+# Scheduler
+apscheduler==3.11.2
+
+# HTTP Client
+httpx==0.28.1
+
+# Settings
+pydantic==2.9.2
+pydantic-settings==2.10.1
+
+# Timezone
+pytz==2025.2
+
+# CORS
+starlette==0.45.3
