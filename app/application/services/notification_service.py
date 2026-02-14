@@ -55,10 +55,26 @@ def format_critical_products_message(products: list[Product], part: int = 0, tot
         validade_str = p.validade.strftime("%d/%m/%Y") if p.validade else "N/A"
         custo_unitario = p.custo_medio or 0
         custo_str = f"R$: {custo_unitario:,.2f}"
+        
+        # Determine emoji based on class
+        p_class = (p.classe or "").upper()
+        if "MUITO" in p_class:
+            emoji = "⚫" # BLACK - MUITO CRITICO
+            class_label = "MUITO CRÍTICO"
+        elif "CRITICO" in p_class or "CRÍTICO" in p_class:
+            emoji = "🔴" # RED - CRITICO
+            class_label = "CRÍTICO"
+        elif "TEN" in p_class: # ATENCAO / ATENÇÃO
+            emoji = "🟡" # YELLOW - ATENCAO
+            class_label = "ATENÇÃO"
+        else:
+            emoji = "⚪"
+            class_label = p.classe or "Outros"
 
         lines.extend([
             "",
-            f"*{i}. {p.descricao}*",
+            f"{emoji} *{i}. {p.descricao}*",
+            f"   🏷️ {class_label}",
             f"   📦 Cód: {p.codigo} | 📦 Emb: {p.embalagem or '—'}",
             f"   📅 Vence: {validade_str} | 📊 Qtd: {p.quantidade or 0}",
             f"   💰 *Valor Unitario: {custo_str}* | 🏪 {p.filial or '—'}",
