@@ -104,12 +104,12 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
             vencido_query = vencido_query.filter(Product.upload_id == upload_id)
         vencido = vencido_query.scalar() or 0
 
-        total_custo_query = self.db.query(func.coalesce(func.sum(Product.custo_total), 0))
+        total_custo_query = self.db.query(func.coalesce(func.sum(func.coalesce(Product.quantidade, 0) * func.coalesce(Product.preco_com_st, 0)), 0))
         if upload_id:
             total_custo_query = total_custo_query.filter(Product.upload_id == upload_id)
         total_custo = total_custo_query.scalar()
 
-        total_custo_mc_query = self.db.query(func.coalesce(func.sum(Product.custo_total), 0)).filter(
+        total_custo_mc_query = self.db.query(func.coalesce(func.sum(func.coalesce(Product.quantidade, 0) * func.coalesce(Product.preco_com_st, 0)), 0)).filter(
             func.upper(Product.classe).like("%MUITO CR%")
         )
         if upload_id:
@@ -175,7 +175,7 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
         query = self.db.query(
             Product.classe,
             func.count(Product.id).label("count"),
-            func.coalesce(func.sum(Product.custo_total), 0).label("total_cost"),
+            func.coalesce(func.sum(func.coalesce(Product.quantidade, 0) * func.coalesce(Product.preco_com_st, 0)), 0).label("total_cost"),
         ).filter(Product.classe.isnot(None))
         
         if upload_id:
@@ -189,7 +189,7 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
         query = self.db.query(
             Product.filial,
             func.count(Product.id).label("count"),
-            func.coalesce(func.sum(Product.custo_total), 0).label("total_cost"),
+            func.coalesce(func.sum(func.coalesce(Product.quantidade, 0) * func.coalesce(Product.preco_com_st, 0)), 0).label("total_cost"),
         ).filter(Product.filial.isnot(None))
         
         if upload_id:
