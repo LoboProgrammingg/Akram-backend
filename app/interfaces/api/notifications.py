@@ -9,10 +9,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.interfaces.deps import get_db, get_product_repository
+from app.interfaces.deps import get_db, get_product_repository, get_client_repository
 from app.interfaces.api.deps import get_current_user, require_admin
 
 from app.domain.repositories.product_repository import ProductRepository
+from app.domain.repositories.client_repository import ClientRepository
 from app.domain.models.user import User
 from app.domain.models.notification_log import NotificationLog
 from app.domain.schemas.notification import NotificationLogRead
@@ -21,6 +22,7 @@ from app.application.services.notification_service import (
     send_test_message,
     send_message_to_number,
 )
+from app.application.services.client_notification_service import send_client_alerts
 
 settings = get_settings()
 tz = pytz.timezone(settings.TIMEZONE)
@@ -149,6 +151,24 @@ async def evolution_qr(
     from app.infrastructure.evolution_api import EvolutionAPIClient
     client = EvolutionAPIClient()
     return await client.get_instance_connect()
+
+
+@router.post("/trigger-clients")
+async def trigger_client_notifications(
+    force: bool = Query(False, description="Forçar envio mesmo se já enviado hoje"),
+    db: Session = Depends(get_db),
+    product_repo: ProductRepository = Depends(get_product_repository),
+    client_repo: ClientRepository = Depends(get_client_repository),
+    user: User = Depends(get_current_user),
+):
+    """Manually trigger client alert notifications (inactive clients)."""
+    try:
+        result = await send_client_alerts(db, product_repo, client_repo, force=force)
+        return {"message": "Notificações de clientes processadas", **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao enviar notificações de clientes: {str(e)}")
+
+
 @router.get("/debug-errors")
 def debug_errors(
     limit: int = 10,

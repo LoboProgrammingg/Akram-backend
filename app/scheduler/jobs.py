@@ -1,4 +1,4 @@
-"""APScheduler jobs — daily notifications at 08:00 America/Cuiaba."""
+"""APScheduler jobs — vendor alerts every 30 mins, client alerts once daily at 09:00."""
 
 import asyncio
 import logging
@@ -20,10 +20,10 @@ scheduler = AsyncIOScheduler(timezone=tz)
 
 
 async def periodic_alert_job():
-    """Periodic job: send alerts based on contact preferences every 30 mins."""
+    """Periodic job: send vendor alerts based on contact preferences every 30 mins."""
     from app.application.services.notification_service import send_daily_alerts
 
-    logger.info(f"Running periodic alert job at {datetime.now(tz).strftime('%d/%m/%Y %H:%M')}")
+    logger.info(f"Running periodic vendor alert job at {datetime.now(tz).strftime('%d/%m/%Y %H:%M')}")
 
     db = SessionLocal()
     try:
@@ -32,24 +32,58 @@ async def periodic_alert_job():
         
         repo = SQLAlchemyProductRepository(db, Product)
         result = await send_daily_alerts(db, repo)
-        logger.info(f"Periodic alert result: {result}")
+        logger.info(f"Vendor alert result: {result}")
     except Exception as e:
-        logger.error(f"Periodic alert job failed: {e}")
+        logger.error(f"Vendor alert job failed: {e}")
+    finally:
+        db.close()
+
+
+async def daily_client_alert_job():
+    """Daily job: send product alerts to inactive clients (once per day at 09:00)."""
+    from app.application.services.client_notification_service import send_client_alerts
+
+    logger.info(f"Running daily client alert job at {datetime.now(tz).strftime('%d/%m/%Y %H:%M')}")
+
+    db = SessionLocal()
+    try:
+        from app.domain.models.product import Product
+        from app.domain.models.client import Client
+        from app.infrastructure.repositories.product_repository import SQLAlchemyProductRepository
+        from app.infrastructure.repositories.client_repository import SQLAlchemyClientRepository
+
+        product_repo = SQLAlchemyProductRepository(db, Product)
+        client_repo = SQLAlchemyClientRepository(db, Client)
+        result = await send_client_alerts(db, product_repo, client_repo)
+        logger.info(f"Client alert result: {result}")
+    except Exception as e:
+        logger.error(f"Client alert job failed: {e}")
     finally:
         db.close()
 
 
 def start_scheduler():
-    """Start the APScheduler with periodic alert job."""
+    """Start the APScheduler with vendor (30-min) and client (daily 09:00) jobs."""
+    # Vendor alerts — every 30 minutes
     scheduler.add_job(
         periodic_alert_job,
         trigger=IntervalTrigger(minutes=30, timezone=tz),
-        id="periodic_critical_products_alert",
-        name="Periodic Critical Products Alert (Every 30 mins)",
+        id="periodic_vendor_alert",
+        name="Vendor Alert (Every 30 mins)",
         replace_existing=True,
     )
+
+    # Client alerts — once daily at 09:00
+    scheduler.add_job(
+        daily_client_alert_job,
+        trigger=CronTrigger(hour=9, minute=0, timezone=tz),
+        id="daily_client_alert",
+        name="Client Alert (Daily 09:00)",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info(f"Scheduler started — daily alert at 08:00 {settings.TIMEZONE}")
+    logger.info(f"Scheduler started — vendor alerts every 30 mins, client alerts daily at 09:00 {settings.TIMEZONE}")
 
 
 def stop_scheduler():
@@ -57,3 +91,4 @@ def stop_scheduler():
     if scheduler.running:
         scheduler.shutdown(wait=False)
         logger.info("Scheduler stopped")
+

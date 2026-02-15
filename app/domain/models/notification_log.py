@@ -15,6 +15,7 @@ class NotificationLog(Base):
     status = Column(String(50), nullable=False, default="pending")  # pending, sent, failed
     error = Column(Text, nullable=True)
     direction = Column(String(10), default="outbound")  # outbound, inbound
+    notification_type = Column(String(50), default="vendor", index=True)  # vendor, client
     sent_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):

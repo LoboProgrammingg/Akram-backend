@@ -18,6 +18,8 @@ from app.domain.models.user import User
 from app.domain.models.phone_number import PhoneNumber
 from app.domain.models.notification_log import NotificationLog
 from app.domain.models.upload import Upload
+from app.domain.models.client import Client
+from app.domain.models.client_upload import ClientUpload
 
 # Import routers
 from app.interfaces.api.auth import router as auth_router
@@ -27,6 +29,8 @@ from app.interfaces.api.phone_numbers import router as phone_numbers_router
 from app.interfaces.api.notifications import router as notifications_router
 from app.interfaces.api.ai import router as ai_router
 from app.interfaces.api.dashboard import router as dashboard_router
+from app.interfaces.api.clients import router as clients_router
+from app.interfaces.api.client_uploads import router as client_uploads_router
 from app.interfaces.webhooks.evolution import router as evolution_router
 
 settings = get_settings()
@@ -106,6 +110,8 @@ app.include_router(phone_numbers_router)
 app.include_router(notifications_router)
 app.include_router(ai_router)
 app.include_router(dashboard_router)
+app.include_router(clients_router)
+app.include_router(client_uploads_router)
 app.include_router(evolution_router)
 
 
