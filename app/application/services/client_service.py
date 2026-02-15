@@ -64,3 +64,15 @@ def get_client_filter_options(repo: ClientRepository) -> Dict[str, List[str]]:
     if not upload_id:
         return {"estados": [], "cidades": []}
     return repo.get_filter_options(upload_id)
+
+
+def get_client_charts(repo: ClientRepository) -> Dict[str, Any]:
+    """Get all client chart data in one call (for dashboard summary)."""
+    upload_id = repo.get_latest_upload_id()
+    if not upload_id:
+        return {"inactivity_distribution": [], "by_estado": [], "by_cidade": []}
+    return {
+        "inactivity_distribution": repo.get_chart_data_inactivity_distribution(upload_id),
+        "by_estado": repo.get_chart_data_by_estado(upload_id),
+        "by_cidade": repo.get_chart_data_by_cidade(upload_id),
+    }
