@@ -113,11 +113,17 @@ def _apply_parsing(df: pd.DataFrame) -> pd.DataFrame:
     # Integer columns
     for col in ("codigo", "cod_rede"):
         if col in df.columns:
-            df[col] = df[col].apply(
-                lambda x: int(float(x))
-                if x is not None and not pd.isna(x) and str(x).strip() not in ("#REF!", "#ERROR!", "#N/A", "")
-                else None
-            )
+            def _safe_int(x):
+                if x is None or (isinstance(x, float) and pd.isna(x)):
+                    return None
+                s = str(x).strip()
+                if not s or s in ("#REF!", "#ERROR!", "#N/A", ""):
+                    return None
+                try:
+                    return int(float(s))
+                except (ValueError, TypeError):
+                    return None
+            df[col] = df[col].apply(_safe_int)
 
     # Phone columns
     for col in ("telefone", "celular"):
@@ -136,9 +142,21 @@ def _apply_parsing(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _detect_separator(file_path: str) -> str:
+def _detect_encoding(file_path: str) -> str:
+    """Detect file encoding by trying common encodings."""
+    for enc in ("utf-8", "latin-1", "cp1252", "iso-8859-1"):
+        try:
+            with open(file_path, "r", encoding=enc) as f:
+                f.read(4096)  # Read a chunk to validate
+            return enc
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    return "latin-1"  # Safe fallback — never raises on any byte
+
+
+def _detect_separator(file_path: str, encoding: str = "latin-1") -> str:
     """Detect CSV separator by reading the first line."""
-    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+    with open(file_path, "r", encoding=encoding, errors="replace") as f:
         first_line = f.readline()
     if ";" in first_line:
         return ";"
@@ -181,8 +199,9 @@ def transform_client_csv_to_db(
     db.refresh(upload)
 
     try:
-        sep = _detect_separator(file_path)
-        df = pd.read_csv(file_path, encoding="utf-8", sep=sep, on_bad_lines="skip")
+        encoding = _detect_encoding(file_path)
+        sep = _detect_separator(file_path, encoding)
+        df = pd.read_csv(file_path, encoding=encoding, sep=sep, on_bad_lines="skip")
         df.columns = [_clean_column_name(c) for c in df.columns]
         df = df.dropna(how="all")
         df = _rename_columns(df)
