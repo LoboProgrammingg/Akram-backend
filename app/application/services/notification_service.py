@@ -29,7 +29,7 @@ MAX_MESSAGE_LENGTH = 4000  # WhatsApp safe limit
 PRODUCTS_PER_MESSAGE = 25  # Split large lists
 
 
-def format_critical_products_message(products: list[Product], part: int = 0, total_parts: int = 1) -> str:
+def format_critical_products_message(products: list[Product], part: int = 0, total_parts: int = 1, start_index: int = 1) -> str:
     """Format the daily alert message for critical products."""
     now = datetime.now(tz)
     date_str = now.strftime("%d/%m/%Y")
@@ -51,12 +51,10 @@ def format_critical_products_message(products: list[Product], part: int = 0, tot
         "━" * 30,
     ])
 
-    for i, p in enumerate(products, 1):
-        validade_str = p.validade.strftime("%d/%m/%Y") if p.validade else "N/A"
-        custo_unitario = p.custo_medio or 0
-        custo_str = f"R$: {custo_unitario:,.2f}"
-        
-        # Determine emoji based on class
+    last_class_label = None
+
+    for i, p in enumerate(products, start_index):
+        # Determine emoji and label based on class
         p_class = (p.classe or "").upper()
         if "MUITO" in p_class:
             emoji = "⚫" # BLACK - MUITO CRITICO
@@ -65,19 +63,28 @@ def format_critical_products_message(products: list[Product], part: int = 0, tot
             emoji = "🔴" # RED - CRITICO
             class_label = "CRÍTICO"
         elif "TEN" in p_class: # ATENCAO / ATENÇÃO
-            emoji = "🟡" # YELLOW - ATENCAO
+            emoji = "🟡" # YELLOW - ATENÇÃO
             class_label = "ATENÇÃO"
         else:
             emoji = "⚪"
-            class_label = p.classe or "Outros"
+            class_label = p.classe or "OUTROS"
+        
+        # Insert Header if class changes (or start of message)
+        if class_label != last_class_label:
+            lines.append("")
+            lines.append(f"🏷️ *{class_label}*")
+            lines.append("─" * 20)
+            last_class_label = class_label
+
+        validade_str = p.validade.strftime("%d/%m/%Y") if p.validade else "N/A"
+        custo_unitario = p.custo_medio or 0
+        custo_str = f"R$: {custo_unitario:,.2f}"
 
         lines.extend([
-            "",
             f"{emoji} *{i}. {p.descricao}*",
-            f"   🏷️ {class_label}",
             f"   📦 Cód: {p.codigo} | 📦 Emb: {p.embalagem or '—'}",
             f"   📅 Vence: {validade_str} | 📊 Qtd: {p.quantidade or 0}",
-            f"   💰 *Valor Unitario: {custo_str}* | 🏪 {p.filial or '—'}",
+            f"   💰 *Valor: {custo_str}* | 🏪 {p.filial or '—'}",
         ])
 
     lines.extend([
@@ -174,8 +181,11 @@ async def send_daily_alerts(db: Session, repo: ProductRepository, force: bool = 
         
         for chunk_idx, chunk in enumerate(chunks):
             # We use the generic formatter but could customize based on types if needed
+            # Calculate start index for continuous numbering
+            start_index = (chunk_idx * PRODUCTS_PER_MESSAGE) + 1
+            
             message = format_critical_products_message(
-                chunk, part=chunk_idx, total_parts=len(chunks)
+                chunk, part=chunk_idx, total_parts=len(chunks), start_index=start_index
             )
 
             log = NotificationLog(
