@@ -21,7 +21,7 @@ def get_client_stats(repo: ClientRepository) -> ClientStats:
     if not upload_id:
         return ClientStats(
             total_clients=0, inactive_30d=0, inactive_60d=0, inactive_90d=0,
-            estados=[], cidades_count=0,
+            sem_data=0, estados=[], cidades_count=0,
         )
     return repo.get_stats(upload_id)
 

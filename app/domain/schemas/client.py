@@ -43,6 +43,7 @@ class ClientStats(BaseModel):
     inactive_30d: int
     inactive_60d: int
     inactive_90d: int
+    sem_data: int
     estados: list[str]
     cidades_count: int
 

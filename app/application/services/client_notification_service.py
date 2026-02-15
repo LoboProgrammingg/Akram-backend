@@ -1,14 +1,16 @@
 """Client notification service — sends product alerts to inactive clients via Evolution API.
 
 Features:
-- Identifies clients inactive for 30+ days
+- Identifies clients inactive for 30+ days (DTULTCOMPRA_GERAL)
+- Normalizes phone numbers (adds "55" prefix for Brazilian DDD-only numbers)
 - Sends product tables via WhatsApp to their celular
-- Separate duplicate prevention (notification_type = 'client')
+- Robust error handling: skips invalid numbers, logs all attempts
 - One notification per client per day
 """
 
+import re
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 import pytz
 from sqlalchemy import func
@@ -25,7 +27,45 @@ from app.infrastructure.evolution_api import EvolutionAPIClient
 settings = get_settings()
 tz = pytz.timezone(settings.TIMEZONE)
 
-PRODUCTS_PER_MESSAGE = 20  # Fewer products per message for client (concise)
+PRODUCTS_PER_MESSAGE = 15
+
+
+def normalize_phone(raw: Optional[str]) -> Optional[str]:
+    """Normalize a Brazilian phone number for WhatsApp.
+
+    Rules:
+    - Strip non-digits
+    - If starts with "55" and has 12-13 digits → already correct
+    - If 10-11 digits (DDD + number) → prepend "55"
+    - If < 10 digits → invalid (returns None)
+    - If > 13 digits → invalid (returns None)
+
+    Examples:
+        "66996109797"   → "5566996109797"   (11 digits → +55)
+        "5566999557737" → "5566999557737"   (13 digits → already has 55)
+        "065924198"     → None              (too short after cleanup)
+        "VERIFICAR"     → None              (non-numeric)
+    """
+    if not raw:
+        return None
+
+    digits = re.sub(r"\D", "", str(raw).strip())
+
+    if not digits or len(digits) < 10:
+        return None  # Too short, can't be valid
+
+    if len(digits) > 13:
+        return None  # Too long, likely garbage
+
+    # Already has country code
+    if digits.startswith("55") and len(digits) >= 12:
+        return digits
+
+    # DDD + number (10 or 11 digits) → add "55"
+    if 10 <= len(digits) <= 11:
+        return f"55{digits}"
+
+    return None  # Doesn't fit any valid pattern
 
 
 def format_client_products_message(
@@ -124,18 +164,19 @@ async def send_client_alerts(
 ) -> dict:
     """Send product alerts to inactive clients (>30 days without purchase).
 
-    Args:
-        db: Database session.
-        product_repo: Product repository for fetching products.
-        client_repo: Client repository for fetching inactive clients.
-        force: If True, skip duplicate check.
+    Flow:
+    1. Get critical products from latest product upload
+    2. Get inactive clients (30+ days no purchase, with valid phone)
+    3. Normalize phone (add "55" prefix if needed)
+    4. Check daily duplicate (skip if already sent today)
+    5. Send via WhatsApp, log everything
+    6. Continue on errors (don't break loop)
     """
     # 1. Get products to send
     product_upload_id = product_repo.get_latest_upload_id()
     if not product_upload_id:
-        return {"sent": 0, "skipped": 0, "message": "Nenhum arquivo de produtos processado"}
+        return {"sent": 0, "skipped": 0, "failed": 0, "errors": [], "message": "Nenhum arquivo de produtos processado"}
 
-    # Get all critical products (combined)
     products = (
         product_repo.get_muito_critico(product_upload_id)
         + product_repo.get_critico(product_upload_id)
@@ -143,30 +184,33 @@ async def send_client_alerts(
     )
 
     if not products:
-        return {"sent": 0, "skipped": 0, "message": "Nenhum produto crítico encontrado"}
+        return {"sent": 0, "skipped": 0, "failed": 0, "errors": [], "message": "Nenhum produto crítico encontrado"}
 
     # 2. Get inactive clients with valid phone numbers
     inactive_clients = client_repo.get_inactive_clients(days=30)
     if not inactive_clients:
-        return {"sent": 0, "skipped": 0, "message": "Nenhum cliente inativo com telefone válido"}
+        return {"sent": 0, "skipped": 0, "failed": 0, "errors": [], "message": "Nenhum cliente inativo com telefone válido"}
 
-    client = EvolutionAPIClient()
+    evolution_client = EvolutionAPIClient()
     sent_count = 0
     skipped_count = 0
+    failed_count = 0
     errors = []
+    no_phone_count = 0
 
     for c in inactive_clients:
-        phone = c.celular
+        # 3. Normalize phone number (add "55" prefix)
+        phone = normalize_phone(c.celular)
         if not phone:
-            skipped_count += 1
+            no_phone_count += 1
             continue
 
-        # 3. Check if already notified today
+        # 4. Check if already notified today
         if not force and _was_client_notified_today(db, phone):
             skipped_count += 1
             continue
 
-        # 4. Split and send
+        # 5. Split and send
         chunks = [products[i:i + PRODUCTS_PER_MESSAGE] for i in range(0, len(products), PRODUCTS_PER_MESSAGE)]
 
         for chunk_idx, chunk in enumerate(chunks):
@@ -184,19 +228,27 @@ async def send_client_alerts(
             db.add(log)
 
             try:
-                await client.send_text(phone, message)
+                await evolution_client.send_text(phone, message)
                 log.status = "sent"
                 sent_count += 1
             except Exception as e:
                 log.status = "failed"
                 log.error = str(e)[:500]
-                errors.append({"phone": phone, "client": c.fantasia, "error": str(e)})
+                failed_count += 1
+                errors.append({
+                    "phone": phone,
+                    "client": c.fantasia or c.razao_social or str(c.codigo),
+                    "error": str(e)[:200],
+                })
 
             db.commit()
 
     return {
         "sent": sent_count,
         "skipped": skipped_count,
-        "total_clients": len(inactive_clients),
-        "errors": errors,
+        "failed": failed_count,
+        "no_phone": no_phone_count,
+        "total_inactive_clients": len(inactive_clients),
+        "total_products": len(products),
+        "errors": errors[:20],  # Cap to avoid huge response
     }

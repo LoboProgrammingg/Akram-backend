@@ -83,6 +83,14 @@ class SQLAlchemyClientRepository(SQLAlchemyRepository[Client], ClientRepository)
 
         total = base_query.scalar() or 0
 
+        # Clients without date (NULL dt_ult_compra)
+        q_null = self.db.query(func.count(Client.id)).filter(
+            Client.dt_ult_compra.is_(None),
+        )
+        if upload_id:
+            q_null = q_null.filter(Client.upload_id == upload_id)
+        sem_data = q_null.scalar() or 0
+
         # Inactive 30+ days
         cutoff_30 = today - timedelta(days=30)
         q30 = self.db.query(func.count(Client.id)).filter(
@@ -132,6 +140,7 @@ class SQLAlchemyClientRepository(SQLAlchemyRepository[Client], ClientRepository)
             inactive_30d=inactive_30,
             inactive_60d=inactive_60,
             inactive_90d=inactive_90,
+            sem_data=sem_data,
             estados=sorted(estados),
             cidades_count=cidades_count,
         )
@@ -173,7 +182,7 @@ class SQLAlchemyClientRepository(SQLAlchemyRepository[Client], ClientRepository)
         return [{"estado": r.estado, "count": r.count} for r in results]
 
     def get_chart_data_inactivity_distribution(self, upload_id: int | None = None) -> List[Dict[str, Any]]:
-        """Get client count grouped by inactivity ranges."""
+        """Get client count grouped by inactivity ranges, including clients without dates."""
         today = self.get_current_date()
 
         cutoff_30 = today - timedelta(days=30)
@@ -201,11 +210,20 @@ class SQLAlchemyClientRepository(SQLAlchemyRepository[Client], ClientRepository)
             active = active.filter(Client.upload_id == upload_id)
         active_count = active.scalar() or 0
 
+        # Clients without date
+        no_date = self.db.query(func.count(Client.id)).filter(
+            Client.dt_ult_compra.is_(None),
+        )
+        if upload_id:
+            no_date = no_date.filter(Client.upload_id == upload_id)
+        no_date_count = no_date.scalar() or 0
+
         return [
             {"faixa": "Ativo (< 30d)", "count": active_count},
             {"faixa": "Inativo 30-60d", "count": _count_range(cutoff_60, cutoff_30)},
             {"faixa": "Inativo 60-90d", "count": _count_range(cutoff_90, cutoff_60)},
             {"faixa": "Inativo > 90d", "count": _count_range(cutoff_90)},
+            {"faixa": "Sem Data", "count": no_date_count},
         ]
 
     def get_chart_data_by_cidade(self, upload_id: int | None = None, limit: int = 10) -> List[Dict[str, Any]]:
