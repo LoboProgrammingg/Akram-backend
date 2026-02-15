@@ -135,6 +135,15 @@ class SQLAlchemyClientRepository(SQLAlchemyRepository[Client], ClientRepository)
             cidades_query = cidades_query.filter(Client.upload_id == upload_id)
         cidades_count = cidades_query.scalar() or 0
 
+        # Valid Mobile (11 digits = DDD+9+8, 13 digits = 55+DDD+9+8)
+        mobile_query = self.db.query(func.count(Client.id)).filter(
+            Client.celular.isnot(None),
+            func.length(Client.celular).in_([11, 13]) 
+        )
+        if upload_id:
+            mobile_query = mobile_query.filter(Client.upload_id == upload_id)
+        mobile_count = mobile_query.scalar() or 0
+
         return ClientStats(
             total_clients=total,
             inactive_30d=inactive_30,
@@ -143,9 +152,10 @@ class SQLAlchemyClientRepository(SQLAlchemyRepository[Client], ClientRepository)
             sem_data=sem_data,
             estados=sorted(estados),
             cidades_count=cidades_count,
+            valid_mobile_count=mobile_count,
         )
 
-    def get_inactive_clients(self, days: int = 30, upload_id: int | None = None) -> List[Client]:
+    def get_inactive_clients(self, days: int = 30, upload_id: int | None = None, limit: int | None = None) -> List[Client]:
         """Get clients whose last purchase was more than N days ago.
         Excludes clients with invalid phone numbers.
         """
@@ -166,6 +176,8 @@ class SQLAlchemyClientRepository(SQLAlchemyRepository[Client], ClientRepository)
             Client.celular.isnot(None),
         )
 
+        if limit:
+            query = query.limit(limit)
         return query.order_by(Client.dt_ult_compra.asc()).all()
 
     def get_chart_data_by_estado(self, upload_id: int | None = None) -> List[Dict[str, Any]]:

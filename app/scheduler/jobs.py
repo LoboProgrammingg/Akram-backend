@@ -40,10 +40,10 @@ async def periodic_alert_job():
 
 
 async def daily_client_alert_job():
-    """Daily job: send product alerts to inactive clients (once per day at 09:00)."""
+    """Periodic job: send product alerts to inactive clients (hourly 09:00-18:00)."""
     from app.application.services.client_notification_service import send_client_alerts
 
-    logger.info(f"Running daily client alert job at {datetime.now(tz).strftime('%d/%m/%Y %H:%M')}")
+    logger.info(f"Running periodic client alert job at {datetime.now(tz).strftime('%d/%m/%Y %H:%M')}")
 
     db = SessionLocal()
     try:
@@ -54,7 +54,9 @@ async def daily_client_alert_job():
 
         product_repo = SQLAlchemyProductRepository(db, Product)
         client_repo = SQLAlchemyClientRepository(db, Client)
-        result = await send_client_alerts(db, product_repo, client_repo)
+        
+        # Limit 100 per run
+        result = await send_client_alerts(db, product_repo, client_repo, limit=100)
         logger.info(f"Client alert result: {result}")
     except Exception as e:
         logger.error(f"Client alert job failed: {e}")
@@ -73,12 +75,12 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # Client alerts — once daily at 09:00
+    # Client alerts — hourly between 09:00 and 18:00
     scheduler.add_job(
         daily_client_alert_job,
-        trigger=CronTrigger(hour=9, minute=0, timezone=tz),
-        id="daily_client_alert",
-        name="Client Alert (Daily 09:00)",
+        trigger=CronTrigger(hour="9-18", minute=0, timezone=tz),
+        id="periodic_client_alert",
+        name="Client Alert (Hourly 09:00-18:00)",
         replace_existing=True,
     )
 

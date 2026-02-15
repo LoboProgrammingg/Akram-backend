@@ -46,6 +46,7 @@ class ClientStats(BaseModel):
     sem_data: int
     estados: list[str]
     cidades_count: int
+    valid_mobile_count: int
 
 
 class ClientUploadRead(BaseModel):

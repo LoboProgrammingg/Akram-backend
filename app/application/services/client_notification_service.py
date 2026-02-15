@@ -161,6 +161,7 @@ async def send_client_alerts(
     product_repo: ProductRepository,
     client_repo: ClientRepository,
     force: bool = False,
+    limit: int | None = None,
 ) -> dict:
     """Send product alerts to inactive clients (>30 days without purchase).
 
@@ -186,8 +187,12 @@ async def send_client_alerts(
     if not products:
         return {"sent": 0, "skipped": 0, "failed": 0, "errors": [], "message": "Nenhum produto crítico encontrado"}
 
-    # 2. Get inactive clients with valid phone numbers
-    inactive_clients = client_repo.get_inactive_clients(days=30)
+    # 2. Get inactive clients with valid phone numbers (scoped to latest client upload)
+    client_upload_id = client_repo.get_latest_upload_id()
+    if not client_upload_id:
+        return {"sent": 0, "skipped": 0, "failed": 0, "errors": [], "message": "Nenhum arquivo de clientes processado"}
+
+    inactive_clients = client_repo.get_inactive_clients(days=30, upload_id=client_upload_id, limit=limit)
     if not inactive_clients:
         return {"sent": 0, "skipped": 0, "failed": 0, "errors": [], "message": "Nenhum cliente inativo com telefone válido"}
 
