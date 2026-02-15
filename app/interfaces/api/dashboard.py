@@ -1,5 +1,6 @@
 """Dashboard API — aggregated stats for the frontend dashboard."""
 
+import logging
 from datetime import datetime, timedelta
 
 import pytz
@@ -25,75 +26,87 @@ from app.application.services.client_service import (
 )
 from app.config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 tz = pytz.timezone(settings.TIMEZONE)
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
 
 def _get_notification_stats(db: Session) -> dict:
-    """Aggregate notification stats from notification_log table."""
-    now = datetime.now(tz)
-    today = now.date()
-    seven_days_ago = today - timedelta(days=7)
+    """Aggregate notification stats — safe even if notification_type column is missing."""
+    try:
+        now = datetime.now(tz)
+        today = now.date()
+        seven_days_ago = today - timedelta(days=7)
 
-    # Sent today (all types)
-    sent_today = (
-        db.query(func.count(NotificationLog.id))
-        .filter(
-            NotificationLog.status == "sent",
-            func.date(NotificationLog.sent_at) == today,
+        # Sent today
+        sent_today = (
+            db.query(func.count(NotificationLog.id))
+            .filter(
+                NotificationLog.status == "sent",
+                func.date(NotificationLog.sent_at) == today,
+            )
+            .scalar()
+            or 0
         )
-        .scalar()
-        or 0
-    )
 
-    # Sent last 7 days
-    sent_7d = (
-        db.query(func.count(NotificationLog.id))
-        .filter(
-            NotificationLog.status == "sent",
-            func.date(NotificationLog.sent_at) >= seven_days_ago,
+        # Sent last 7 days
+        sent_7d = (
+            db.query(func.count(NotificationLog.id))
+            .filter(
+                NotificationLog.status == "sent",
+                func.date(NotificationLog.sent_at) >= seven_days_ago,
+            )
+            .scalar()
+            or 0
         )
-        .scalar()
-        or 0
-    )
 
-    # Failed last 7 days
-    failed_7d = (
-        db.query(func.count(NotificationLog.id))
-        .filter(
-            NotificationLog.status == "failed",
-            func.date(NotificationLog.sent_at) >= seven_days_ago,
+        # Failed last 7 days
+        failed_7d = (
+            db.query(func.count(NotificationLog.id))
+            .filter(
+                NotificationLog.status == "failed",
+                func.date(NotificationLog.sent_at) >= seven_days_ago,
+            )
+            .scalar()
+            or 0
         )
-        .scalar()
-        or 0
-    )
 
-    # Breakdown by type (last 7d)
-    by_type_rows = (
-        db.query(
-            NotificationLog.notification_type,
-            NotificationLog.status,
-            func.count(NotificationLog.id).label("count"),
-        )
-        .filter(func.date(NotificationLog.sent_at) >= seven_days_ago)
-        .group_by(NotificationLog.notification_type, NotificationLog.status)
-        .all()
-    )
+        # Breakdown by type — wrapped in try/except for missing column
+        by_type: dict = {}
+        try:
+            by_type_rows = (
+                db.query(
+                    NotificationLog.notification_type,
+                    NotificationLog.status,
+                    func.count(NotificationLog.id).label("count"),
+                )
+                .filter(func.date(NotificationLog.sent_at) >= seven_days_ago)
+                .group_by(NotificationLog.notification_type, NotificationLog.status)
+                .all()
+            )
+            for row in by_type_rows:
+                ntype = row.notification_type or "vendor"
+                if ntype not in by_type:
+                    by_type[ntype] = {"sent": 0, "failed": 0, "pending": 0}
+                by_type[ntype][row.status] = row.count
+        except Exception as e:
+            logger.warning(f"Could not get notification breakdown by type: {e}")
+            db.rollback()
 
-    by_type = {}
-    for row in by_type_rows:
-        ntype = row.notification_type or "vendor"
-        if ntype not in by_type:
-            by_type[ntype] = {"sent": 0, "failed": 0, "pending": 0}
-        by_type[ntype][row.status] = row.count
-
-    return {
-        "sent_today": sent_today,
-        "sent_7d": sent_7d,
-        "failed_7d": failed_7d,
-        "by_type": by_type,
-    }
+        return {
+            "sent_today": sent_today,
+            "sent_7d": sent_7d,
+            "failed_7d": failed_7d,
+            "by_type": by_type,
+        }
+    except Exception as e:
+        logger.error(f"Error getting notification stats: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return {"sent_today": 0, "sent_7d": 0, "failed_7d": 0, "by_type": {}}
 
 
 @router.get("/summary")
@@ -111,9 +124,23 @@ def dashboard_summary(
     by_filial = get_chart_data_by_filial(product_repo)
     expiry = get_chart_data_expiry_timeline(product_repo)
 
-    # Clients
-    client_stats = get_client_stats(client_repo)
-    client_charts = get_client_charts(client_repo)
+    # Clients (safe fallback)
+    try:
+        client_stats_obj = get_client_stats(client_repo)
+        # Convert Pydantic model to dict for JSON serialization
+        client_stats = client_stats_obj.model_dump() if hasattr(client_stats_obj, 'model_dump') else client_stats_obj
+    except Exception as e:
+        logger.error(f"Error getting client stats: {e}")
+        client_stats = {
+            "total_clients": 0, "inactive_30d": 0, "inactive_60d": 0,
+            "inactive_90d": 0, "sem_data": 0, "estados": [], "cidades_count": 0,
+        }
+
+    try:
+        client_charts = get_client_charts(client_repo)
+    except Exception as e:
+        logger.error(f"Error getting client charts: {e}")
+        client_charts = {"inactivity_distribution": [], "by_estado": [], "by_cidade": []}
 
     # Notifications
     notification_stats = _get_notification_stats(db)
