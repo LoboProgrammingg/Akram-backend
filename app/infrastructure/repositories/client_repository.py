@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 from datetime import date, datetime, timedelta
 
 import pytz
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.domain.models.client import Client
@@ -138,7 +138,10 @@ class SQLAlchemyClientRepository(SQLAlchemyRepository[Client], ClientRepository)
         # Valid Mobile (11 digits = DDD+9+8, 13 digits = 55+DDD+9+8)
         mobile_query = self.db.query(func.count(Client.id)).filter(
             Client.celular.isnot(None),
-            func.length(Client.celular).in_([11, 13]) 
+            or_(
+                func.length(Client.celular) == 11,
+                func.length(Client.celular) == 13
+            )
         )
         if upload_id:
             mobile_query = mobile_query.filter(Client.upload_id == upload_id)
