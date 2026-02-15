@@ -104,6 +104,15 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
             vencido_query = vencido_query.filter(Product.upload_id == upload_id)
         vencido = vencido_query.scalar() or 0
 
+        atencao_query = self.db.query(func.count(Product.id)).filter(
+            (func.upper(Product.classe).like("%TEN%")) | 
+            (func.upper(Product.classe).like("%AMAREL%")) |
+            (func.upper(Product.classe).like("%YELLOW%"))
+        )
+        if upload_id:
+            atencao_query = atencao_query.filter(Product.upload_id == upload_id)
+        atencao = atencao_query.scalar() or 0
+
         total_custo_query = self.db.query(func.coalesce(func.sum(func.coalesce(Product.quantidade, 0) * func.coalesce(Product.preco_com_st, 0)), 0))
         if upload_id:
             total_custo_query = total_custo_query.filter(Product.upload_id == upload_id)
@@ -130,6 +139,7 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
             total_products=total,
             total_muito_critico=muito_critico,
             total_critico=critico,
+            total_atencao=atencao,
             total_vencido=vencido,
             total_custo=float(total_custo),
             total_custo_muito_critico=float(total_custo_mc),
@@ -155,9 +165,11 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
         return query.order_by(Product.validade.asc().nullslast()).all()
 
     def get_atencao(self, upload_id: int | None = None) -> List[Product]:
-        """Get all products with Classe == 'Atencao' or 'Atenção'."""
+        """Get all products with Classe == 'Atencao', 'Atenção', 'Amarelo' or 'Yellow'."""
         query = self.db.query(Product).filter(
-            (func.upper(Product.classe).like("%TEN%")) # Matches ATENCAO, ATENÇÃO
+            (func.upper(Product.classe).like("%TEN%")) | 
+            (func.upper(Product.classe).like("%AMAREL%")) |
+            (func.upper(Product.classe).like("%YELLOW%"))
         )
         if upload_id:
             query = query.filter(Product.upload_id == upload_id)

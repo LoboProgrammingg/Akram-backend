@@ -51,6 +51,7 @@ class ProductStats(BaseModel):
     total_products: int
     total_muito_critico: int
     total_critico: int
+    total_atencao: int
     total_vencido: int
     total_custo: float
     total_custo_muito_critico: float
