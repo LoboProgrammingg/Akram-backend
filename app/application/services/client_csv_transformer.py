@@ -139,6 +139,27 @@ def _apply_parsing(df: pd.DataFrame) -> pd.DataFrame:
                 else None
             )
 
+    # === Post-parsing validation (detect misaligned rows) ===
+
+    # Estado should be exactly 2 chars (UF code). If longer, data is shifted.
+    if "estado" in df.columns:
+        df["estado"] = df["estado"].apply(
+            lambda x: x if x is not None and len(str(x)) <= 2 else None
+        )
+
+    # Cidade should not be all digits (that means a phone number leaked in)
+    if "cidade" in df.columns:
+        df["cidade"] = df["cidade"].apply(
+            lambda x: x if x is not None and not str(x).replace(" ", "").isdigit() else None
+        )
+
+    # Truncate phones to 20 chars max (DB column constraint)
+    for col in ("telefone", "celular"):
+        if col in df.columns:
+            df[col] = df[col].apply(
+                lambda x: str(x)[:20] if x is not None else None
+            )
+
     return df
 
 
