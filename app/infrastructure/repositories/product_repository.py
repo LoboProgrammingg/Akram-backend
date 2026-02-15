@@ -113,7 +113,7 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
             atencao_query = atencao_query.filter(Product.upload_id == upload_id)
         atencao = atencao_query.scalar() or 0
 
-        total_custo_query = self.db.query(func.coalesce(func.nullif(func.coalesce(Product.quantidade, 0) * func.coalesce(Product.preco_com_st, 0), 0), Product.custo_total, 0))
+        total_custo_query = self.db.query(func.coalesce(func.sum(func.coalesce(func.nullif(func.coalesce(Product.quantidade, 0) * func.coalesce(Product.preco_com_st, 0), 0), Product.custo_total, 0)), 0))
         if upload_id:
             total_custo_query = total_custo_query.filter(Product.upload_id == upload_id)
         total_custo = total_custo_query.scalar()
