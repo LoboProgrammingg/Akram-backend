@@ -44,9 +44,8 @@ def format_critical_products_message(products: list[Product], part: int = 0, tot
     if total_parts > 1:
         lines.append(f"📋 Parte {part + 1} de {total_parts}")
 
-    total_custo = sum(p.custo_total or 0 for p in products)
     lines.extend([
-        f"📊 {len(products)} produto{'s' if len(products) > 1 else ''} | 💰 R$ {total_custo:,.2f}",
+        f"📊 {len(products)} produto{'s' if len(products) > 1 else ''}",
         "",
         "━" * 30,
     ])
@@ -77,7 +76,7 @@ def format_critical_products_message(products: list[Product], part: int = 0, tot
             last_class_label = class_label
 
         validade_str = p.validade.strftime("%d/%m/%Y") if p.validade else "N/A"
-        custo_unitario = p.custo_medio or 0
+        custo_unitario = p.preco_com_st or 0
         custo_str = f"R$: {custo_unitario:,.2f}"
 
         lines.extend([

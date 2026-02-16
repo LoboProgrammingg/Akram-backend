@@ -102,7 +102,7 @@ def format_client_products_message(
 
     for i, p in enumerate(products, 1):
         validade_str = p.validade.strftime("%d/%m/%Y") if p.validade else "N/A"
-        custo_str = f"R$ {p.custo_medio or 0:,.2f}"
+        custo_str = f"R$ {p.preco_com_st or 0:,.2f}"
 
         # Severity emoji
         p_class = (p.classe or "").upper()
