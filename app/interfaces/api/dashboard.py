@@ -19,6 +19,10 @@ from app.application.services.product_service import (
     get_chart_data_by_classe,
     get_chart_data_by_filial,
     get_chart_data_expiry_timeline,
+    get_chart_data_by_uf,
+    get_top_critical_products,
+    get_expiry_summary_by_week,
+    get_value_summary,
 )
 from app.application.services.client_service import (
     get_client_stats,
@@ -123,6 +127,10 @@ def dashboard_summary(
     by_classe = get_chart_data_by_classe(product_repo)
     by_filial = get_chart_data_by_filial(product_repo)
     expiry = get_chart_data_expiry_timeline(product_repo)
+    by_uf = get_chart_data_by_uf(product_repo)
+    top_critical = get_top_critical_products(product_repo, limit=10)
+    expiry_by_week = get_expiry_summary_by_week(product_repo, weeks=4)
+    value_summary = get_value_summary(product_repo)
 
     # Clients (safe fallback)
     try:
@@ -152,7 +160,11 @@ def dashboard_summary(
                 "by_classe": by_classe,
                 "by_filial": by_filial,
                 "expiry_timeline": expiry,
+                "by_uf": by_uf,
+                "expiry_by_week": expiry_by_week,
             },
+            "top_critical": top_critical,
+            "value_summary": value_summary,
         },
         "clients": {
             "stats": client_stats,
@@ -165,5 +177,9 @@ def dashboard_summary(
             "by_classe": by_classe,
             "by_filial": by_filial,
             "expiry_timeline": expiry,
+            "by_uf": by_uf,
+            "expiry_by_week": expiry_by_week,
         },
+        "top_critical": top_critical,
+        "value_summary": value_summary,
     }

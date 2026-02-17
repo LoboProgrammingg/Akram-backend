@@ -139,6 +139,7 @@ async def send_daily_alerts(db: Session, repo: ProductRepository, force: bool = 
         return {"sent": 0, "skipped": 0, "message": "Nenhum número ativo cadastrado"}
 
     client = EvolutionAPIClient()
+    client.reset_message_count()  # Reset counter for new bulk operation
     sent_count = 0
     skipped_count = 0
     errors = []

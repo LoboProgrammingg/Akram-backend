@@ -80,3 +80,41 @@ def get_filter_options(repo: ProductRepository) -> Dict[str, List[str]]:
     if not upload_id:
         return {"filiais": [], "classes": [], "ufs": [], "compradores": []}
     return repo.get_filter_options(upload_id)
+
+
+def get_chart_data_by_uf(repo: ProductRepository) -> List[Dict[str, Any]]:
+    """Get product count and total value grouped by UF (region)."""
+    upload_id = repo.get_latest_upload_id()
+    if not upload_id:
+        return []
+    return repo.get_chart_data_by_uf(upload_id)
+
+
+def get_top_critical_products(repo: ProductRepository, limit: int = 10) -> List[Dict[str, Any]]:
+    """Get top critical products ordered by expiry date (most urgent)."""
+    upload_id = repo.get_latest_upload_id()
+    if not upload_id:
+        return []
+    return repo.get_top_critical_products(upload_id, limit)
+
+
+def get_expiry_summary_by_week(repo: ProductRepository, weeks: int = 4) -> List[Dict[str, Any]]:
+    """Get product count grouped by week with class breakdown."""
+    upload_id = repo.get_latest_upload_id()
+    if not upload_id:
+        return []
+    return repo.get_expiry_summary_by_week(upload_id, weeks)
+
+
+def get_value_summary(repo: ProductRepository) -> Dict[str, Any]:
+    """Get summary of total values by class."""
+    upload_id = repo.get_latest_upload_id()
+    if not upload_id:
+        return {
+            "muito_critico": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "critico": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "atencao": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "outros": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "total": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+        }
+    return repo.get_value_summary(upload_id)

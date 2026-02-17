@@ -259,3 +259,155 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
             "ufs": sorted(ufs),
             "compradores": sorted(compradores),
         }
+
+    def get_chart_data_by_uf(self, upload_id: int | None = None) -> List[Dict[str, Any]]:
+        """Get product count and total value grouped by UF (region)."""
+        query = self.db.query(
+            Product.uf,
+            func.count(Product.id).label("count"),
+            func.coalesce(func.sum(func.coalesce(Product.quantidade, 0)), 0).label("total_qtd"),
+            func.coalesce(func.sum(func.coalesce(Product.preco_com_st, 0)), 0).label("total_valor"),
+            func.coalesce(func.sum(func.coalesce(Product.custo_total, 0)), 0).label("total_custo"),
+        ).filter(Product.uf.isnot(None))
+        
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+            
+        results = query.group_by(Product.uf).order_by(func.count(Product.id).desc()).all()
+        return [
+            {
+                "uf": r.uf, 
+                "count": r.count, 
+                "total_qtd": float(r.total_qtd),
+                "total_valor": float(r.total_valor),
+                "total_custo": float(r.total_custo),
+            } 
+            for r in results
+        ]
+
+    def get_top_critical_products(self, upload_id: int | None = None, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get top critical products ordered by quantity (most urgent to sell)."""
+        query = self.db.query(Product).filter(
+            func.upper(Product.classe).like("%MUITO CR%")
+        )
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+        
+        results = query.order_by(Product.validade.asc().nullslast()).limit(limit).all()
+        return [
+            {
+                "id": p.id,
+                "codigo": p.codigo,
+                "descricao": p.descricao,
+                "quantidade": p.quantidade,
+                "validade": p.validade.isoformat() if p.validade else None,
+                "preco_com_st": p.preco_com_st,
+                "custo_total": p.custo_total,
+                "classe": p.classe,
+                "uf": p.uf,
+                "filial": p.filial,
+            }
+            for p in results
+        ]
+
+    def get_expiry_summary_by_week(self, upload_id: int | None = None, weeks: int = 4) -> List[Dict[str, Any]]:
+        """Get product count grouped by week (next N weeks) with class breakdown."""
+        today = self.get_current_date()
+        results = []
+        
+        for week in range(weeks):
+            week_start = today + timedelta(days=week * 7)
+            week_end = today + timedelta(days=(week + 1) * 7)
+            
+            # Count by class for this week
+            query = self.db.query(
+                Product.classe,
+                func.count(Product.id).label("count"),
+                func.coalesce(func.sum(func.coalesce(Product.quantidade, 0)), 0).label("total_qtd"),
+            ).filter(
+                Product.validade.isnot(None),
+                Product.validade >= week_start,
+                Product.validade < week_end,
+            )
+            
+            if upload_id:
+                query = query.filter(Product.upload_id == upload_id)
+            
+            class_data = query.group_by(Product.classe).all()
+            
+            week_data = {
+                "semana": f"Semana {week + 1}",
+                "inicio": week_start.isoformat(),
+                "fim": week_end.isoformat(),
+                "muito_critico": 0,
+                "critico": 0,
+                "atencao": 0,
+                "total": 0,
+                "total_qtd": 0,
+            }
+            
+            for row in class_data:
+                classe = (row.classe or "").upper()
+                if "MUITO" in classe:
+                    week_data["muito_critico"] = row.count
+                elif "CRITICO" in classe or "CRÍTICO" in classe:
+                    week_data["critico"] = row.count
+                elif "TEN" in classe:
+                    week_data["atencao"] = row.count
+                week_data["total"] += row.count
+                week_data["total_qtd"] += float(row.total_qtd)
+            
+            results.append(week_data)
+        
+        return results
+
+    def get_value_summary(self, upload_id: int | None = None) -> Dict[str, Any]:
+        """Get summary of total values by class."""
+        query = self.db.query(
+            Product.classe,
+            func.count(Product.id).label("count"),
+            func.coalesce(func.sum(func.coalesce(Product.quantidade, 0)), 0).label("total_qtd"),
+            func.coalesce(func.sum(func.coalesce(Product.preco_com_st, 0)), 0).label("total_valor_unit"),
+            func.coalesce(func.sum(func.coalesce(Product.custo_total, 0)), 0).label("total_custo"),
+        )
+        
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+        
+        results = query.group_by(Product.classe).all()
+        
+        summary = {
+            "muito_critico": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "critico": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "atencao": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "outros": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "total": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+        }
+        
+        for row in results:
+            classe = (row.classe or "").upper()
+            data = {
+                "count": row.count,
+                "total_qtd": float(row.total_qtd),
+                "total_valor_unit": float(row.total_valor_unit),
+                "total_custo": float(row.total_custo),
+            }
+            
+            if "MUITO" in classe:
+                summary["muito_critico"] = data
+            elif "CRITICO" in classe or "CRÍTICO" in classe:
+                summary["critico"] = data
+            elif "TEN" in classe:
+                summary["atencao"] = data
+            else:
+                summary["outros"]["count"] += data["count"]
+                summary["outros"]["total_qtd"] += data["total_qtd"]
+                summary["outros"]["total_valor_unit"] += data["total_valor_unit"]
+                summary["outros"]["total_custo"] += data["total_custo"]
+            
+            summary["total"]["count"] += data["count"]
+            summary["total"]["total_qtd"] += data["total_qtd"]
+            summary["total"]["total_valor_unit"] += data["total_valor_unit"]
+            summary["total"]["total_custo"] += data["total_custo"]
+        
+        return summary
