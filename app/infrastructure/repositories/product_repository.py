@@ -3,7 +3,7 @@ SQLAlchemy Implementation of Product Repository.
 """
 
 from typing import Any, Dict, List
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import pytz
 
 from sqlalchemy import func
@@ -411,3 +411,102 @@ class SQLAlchemyProductRepository(SQLAlchemyRepository[Product], ProductReposito
             summary["total"]["total_custo"] += data["total_custo"]
         
         return summary
+
+    def recalculate_classes(self, upload_id: int | None = None) -> Dict[str, int]:
+        """Recalculate product classes based on days until expiry.
+        
+        Classification rules:
+        - VENCIDO: validade < hoje
+        - MUITO CRÍTICO: 0-7 dias até vencer
+        - CRÍTICO: 8-30 dias até vencer
+        - ATENÇÃO: 31-60 dias até vencer
+        - NORMAL: > 60 dias
+        """
+        today = self.get_current_date()
+        
+        query = self.db.query(Product)
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+        
+        products = query.all()
+        counts = {"vencido": 0, "muito_critico": 0, "critico": 0, "atencao": 0, "normal": 0}
+        
+        for product in products:
+            if product.validade is None:
+                continue
+            
+            days_until = (product.validade - today).days
+            
+            if days_until < 0:
+                new_class = "VENCIDO"
+                counts["vencido"] += 1
+            elif days_until <= 7:
+                new_class = "MUITO CRÍTICO"
+                counts["muito_critico"] += 1
+            elif days_until <= 30:
+                new_class = "CRÍTICO"
+                counts["critico"] += 1
+            elif days_until <= 60:
+                new_class = "ATENÇÃO"
+                counts["atencao"] += 1
+            else:
+                new_class = "NORMAL"
+                counts["normal"] += 1
+            
+            # Update if class changed
+            if product.classe != new_class:
+                product.classe = new_class
+        
+        self.db.commit()
+        return counts
+
+    def get_expiry_status(self, upload_id: int | None = None) -> Dict[str, Any]:
+        """Get current expiry status with exact day counts."""
+        today = self.get_current_date()
+        
+        query = self.db.query(Product).filter(Product.validade.isnot(None))
+        if upload_id:
+            query = query.filter(Product.upload_id == upload_id)
+        
+        products = query.all()
+        
+        status = {
+            "data_atual": today.isoformat(),
+            "timezone": settings.TIMEZONE,
+            "vencidos": 0,
+            "vence_hoje": 0,
+            "vence_7_dias": 0,
+            "vence_30_dias": 0,
+            "vence_60_dias": 0,
+            "mais_60_dias": 0,
+            "produtos_por_dia": [],
+        }
+        
+        # Count by days until expiry
+        days_count = {}
+        for product in products:
+            days_until = (product.validade - today).days
+            
+            if days_until < 0:
+                status["vencidos"] += 1
+            elif days_until == 0:
+                status["vence_hoje"] += 1
+            elif days_until <= 7:
+                status["vence_7_dias"] += 1
+            elif days_until <= 30:
+                status["vence_30_dias"] += 1
+            elif days_until <= 60:
+                status["vence_60_dias"] += 1
+            else:
+                status["mais_60_dias"] += 1
+            
+            # Group by exact date for next 14 days
+            if 0 <= days_until <= 14:
+                date_key = product.validade.isoformat()
+                if date_key not in days_count:
+                    days_count[date_key] = {"date": date_key, "dias_ate_vencer": days_until, "count": 0}
+                days_count[date_key]["count"] += 1
+        
+        status["produtos_por_dia"] = sorted(days_count.values(), key=lambda x: x["date"])
+        
+        return status

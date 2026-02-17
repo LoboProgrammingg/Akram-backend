@@ -87,3 +87,36 @@ def filter_options(
     user: User = Depends(get_current_user),
 ):
     return get_filter_options(repo)
+
+
+@router.get("/expiry-status")
+def expiry_status(
+    repo: ProductRepository = Depends(get_product_repository),
+    user: User = Depends(get_current_user),
+):
+    """Get current expiry status with exact day counts based on today's date."""
+    upload_id = repo.get_latest_upload_id()
+    return repo.get_expiry_status(upload_id)
+
+
+@router.post("/recalculate-classes")
+def recalculate_classes(
+    repo: ProductRepository = Depends(get_product_repository),
+    user: User = Depends(get_current_user),
+):
+    """Recalculate all product classes based on days until expiry.
+    
+    This updates the 'classe' field for all products based on:
+    - VENCIDO: already expired
+    - MUITO CRÍTICO: 0-7 days until expiry
+    - CRÍTICO: 8-30 days until expiry
+    - ATENÇÃO: 31-60 days until expiry
+    - NORMAL: > 60 days until expiry
+    """
+    upload_id = repo.get_latest_upload_id()
+    counts = repo.recalculate_classes(upload_id)
+    return {
+        "message": "Classificações recalculadas com sucesso",
+        "data_atual": repo.get_current_date().isoformat(),
+        "contagem": counts,
+    }

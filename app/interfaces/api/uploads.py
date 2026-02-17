@@ -93,3 +93,30 @@ def list_uploads(
 ):
     uploads = db.query(Upload).order_by(Upload.created_at.desc()).limit(50).all()
     return [UploadRead.model_validate(u) for u in uploads]
+
+
+@router.delete("/{upload_id}")
+def delete_upload(
+    upload_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Delete an upload and all associated products."""
+    from app.domain.models.product import Product
+    
+    # Check if upload exists
+    upload = db.query(Upload).filter(Upload.id == upload_id).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload não encontrado")
+    
+    # Delete associated products first
+    deleted_products = db.query(Product).filter(Product.upload_id == upload_id).delete()
+    
+    # Delete the upload record
+    db.delete(upload)
+    db.commit()
+    
+    return {
+        "message": f"Upload '{upload.original_name}' deletado com sucesso",
+        "deleted_products": deleted_products,
+    }
