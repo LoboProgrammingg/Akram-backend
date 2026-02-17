@@ -225,6 +225,25 @@ def transform_xlsx_to_csv(
         raise
 
 
+def _read_csv_with_encoding(file_path: str) -> pd.DataFrame:
+    """Try to read CSV with multiple encodings (Brazilian Excel exports use Latin-1/Windows-1252)."""
+    encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1"]
+    separators = [",", ";"]
+    
+    for encoding in encodings:
+        for sep in separators:
+            try:
+                df = pd.read_csv(file_path, encoding=encoding, sep=sep)
+                # Check if we got valid columns (more than 1 column usually means correct separator)
+                if len(df.columns) > 1:
+                    return df
+            except (UnicodeDecodeError, pd.errors.ParserError):
+                continue
+    
+    # Last resort: try with error handling
+    return pd.read_csv(file_path, encoding="latin-1", sep=";", on_bad_lines="skip")
+
+
 def transform_csv_to_db(
     file_path: str,
     db: Session,
@@ -233,6 +252,7 @@ def transform_csv_to_db(
 ) -> dict:
     """
     Read a CSV, normalize, and insert to DB.
+    Supports multiple encodings (UTF-8, Latin-1, Windows-1252).
     """
     upload = Upload(
         filename=os.path.basename(file_path),
@@ -245,7 +265,7 @@ def transform_csv_to_db(
     db.refresh(upload)
 
     try:
-        df = pd.read_csv(file_path, encoding="utf-8")
+        df = _read_csv_with_encoding(file_path)
         df.columns = [_clean_column_name(c) for c in df.columns]
         df = df.dropna(how="all")
         df = _rename_columns(df)
