@@ -122,15 +122,65 @@ def dashboard_summary(
 ):
     """Get unified dashboard data: products + clients + notifications."""
 
-    # Products
-    product_stats = get_product_stats(product_repo)
-    by_classe = get_chart_data_by_classe(product_repo)
-    by_filial = get_chart_data_by_filial(product_repo)
-    expiry = get_chart_data_expiry_timeline(product_repo)
-    by_uf = get_chart_data_by_uf(product_repo)
-    top_critical = get_top_critical_products(product_repo, limit=10)
-    expiry_by_week = get_expiry_summary_by_week(product_repo, weeks=4)
-    value_summary = get_value_summary(product_repo)
+    # Products - with safe fallbacks
+    try:
+        product_stats_obj = get_product_stats(product_repo)
+        product_stats = product_stats_obj.model_dump() if hasattr(product_stats_obj, 'model_dump') else product_stats_obj
+    except Exception as e:
+        logger.error(f"Error getting product stats: {e}")
+        product_stats = {
+            "total_products": 0, "total_muito_critico": 0, "total_critico": 0,
+            "total_atencao": 0, "total_vencido": 0, "total_custo": 0,
+            "total_custo_muito_critico": 0, "filiais": [], "classes": []
+        }
+
+    try:
+        by_classe = get_chart_data_by_classe(product_repo)
+    except Exception as e:
+        logger.error(f"Error getting by_classe: {e}")
+        by_classe = []
+
+    try:
+        by_filial = get_chart_data_by_filial(product_repo)
+    except Exception as e:
+        logger.error(f"Error getting by_filial: {e}")
+        by_filial = []
+
+    try:
+        expiry = get_chart_data_expiry_timeline(product_repo)
+    except Exception as e:
+        logger.error(f"Error getting expiry timeline: {e}")
+        expiry = []
+
+    try:
+        by_uf = get_chart_data_by_uf(product_repo)
+    except Exception as e:
+        logger.error(f"Error getting by_uf: {e}")
+        by_uf = []
+
+    try:
+        top_critical = get_top_critical_products(product_repo, limit=10)
+    except Exception as e:
+        logger.error(f"Error getting top_critical: {e}")
+        top_critical = []
+
+    try:
+        expiry_by_week = get_expiry_summary_by_week(product_repo, weeks=4)
+    except Exception as e:
+        logger.error(f"Error getting expiry_by_week: {e}")
+        expiry_by_week = []
+
+    try:
+        value_summary = get_value_summary(product_repo)
+    except Exception as e:
+        logger.error(f"Error getting value_summary: {e}")
+        value_summary = {
+            "muito_critico": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "critico": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "atencao": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "outros": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+            "total": {"count": 0, "total_qtd": 0, "total_valor_unit": 0, "total_custo": 0},
+        }
 
     # Clients (safe fallback)
     try:
