@@ -62,15 +62,8 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    # Start scheduler
-    from app.scheduler.jobs import start_scheduler
-    start_scheduler()
-
     yield
 
-    # Shutdown
-    from app.scheduler.jobs import stop_scheduler
-    stop_scheduler()
     logger.info("Akram Monitoring System stopped")
 
 
